@@ -1,0 +1,206 @@
+--- qemu-2.3.0/include/elf.h.orig	2015-04-27 22:08:25.000000000 +0800
++++ qemu-2.3.0/include/elf.h	2016-06-26 22:29:35.228821300 +0800
+@@ -1429,10 +1429,10 @@
+ #define ELFOSABI_STANDALONE     255     /* Standalone (embedded) application */
+ 
+ #define	ELFMAG0		0x7f		/* EI_MAG */
+-#define	ELFMAG1		'E'
+-#define	ELFMAG2		'L'
+-#define	ELFMAG3		'F'
+-#define	ELFMAG		"\177ELF"
++#define	ELFMAG1		'C'
++#define	ELFMAG2		'G'
++#define	ELFMAG3		'C'
++#define	ELFMAG		"\177CGC"
+ #define	SELFMAG		4
+ 
+ #define	ELFCLASSNONE	0		/* EI_CLASS */
+--- qemu-2.3.0/linux-user/i386/syscall_nr.h.orig	2015-04-27 22:08:25.000000000 +0800
++++ qemu-2.3.0/linux-user/i386/syscall_nr.h	2016-06-26 22:20:02.377056100 +0800
+@@ -3,13 +3,23 @@
+  */
+ 
+ #define TARGET_NR_restart_syscall      0
+-#define TARGET_NR_exit		  1
+-#define TARGET_NR_fork		  2
+-#define TARGET_NR_read		  3
+-#define TARGET_NR_write		  4
+-#define TARGET_NR_open		  5
+-#define TARGET_NR_close		  6
+-#define TARGET_NR_waitpid		  7
++
++#define TARGET_NR_exit		  991
++#define TARGET_NR_fork		  992
++#define TARGET_NR_read		  993
++#define TARGET_NR_write		  994
++#define TARGET_NR_open		  995
++#define TARGET_NR_close		  996
++#define TARGET_NR_waitpid		  997
++
++#define TARGET_NR_terminate	  1
++#define TARGET_NR_transmit	  2
++#define TARGET_NR_receive	  3
++#define TARGET_NR_fdwait	  4
++#define TARGET_NR_allocate	  5
++#define TARGET_NR_deallocate  6
++#define TARGET_NR_random	  7
++
+ #define TARGET_NR_creat		  8
+ #define TARGET_NR_link		  9
+ #define TARGET_NR_unlink		 10
+--- qemu-2.3.0/linux-user/linuxload.c.orig	2015-04-27 22:08:25.000000000 +0800
++++ qemu-2.3.0/linux-user/linuxload.c	2016-06-25 22:26:48.000000000 +0800
+@@ -150,9 +150,9 @@
+ 
+     if(retval>=0) {
+         if (bprm->buf[0] == 0x7f
+-                && bprm->buf[1] == 'E'
+-                && bprm->buf[2] == 'L'
+-                && bprm->buf[3] == 'F') {
++                && bprm->buf[1] == 'C'
++                && bprm->buf[2] == 'G'
++                && bprm->buf[3] == 'C') {
+             retval = load_elf_binary(bprm, infop);
+ #if defined(TARGET_HAS_BFLT)
+         } else if (bprm->buf[0] == 'b'
+--- qemu-2.3.0/linux-user/strace.list.orig	2015-04-27 22:08:26.000000000 +0800
++++ qemu-2.3.0/linux-user/strace.list	2016-06-25 22:58:40.000000000 +0800
+@@ -1542,3 +1542,25 @@
+ #ifdef TARGET_NR_atomic_barrier
+ { TARGET_NR_atomic_barrier, "atomic_barrier", NULL, NULL, NULL },
+ #endif
++
++#ifdef TARGET_NR_terminate
++{ TARGET_NR_terminate, "terminate" , "%s(%d)\n", NULL, NULL },
++#endif
++#ifdef TARGET_NR_transmit
++{ TARGET_NR_transmit, "transmit" , "%s(%d,%#x,%d,%#x)", NULL, NULL },
++#endif
++#ifdef TARGET_NR_receive
++{ TARGET_NR_receive, "receive" , "%s(%d,%#x,%d,%#x)", NULL, NULL },
++#endif
++#ifdef TARGET_NR_fdwait
++{ TARGET_NR_fdwait, "fdwait" , NULL, NULL, NULL },
++#endif
++#ifdef TARGET_NR_allocate
++{ TARGET_NR_allocate, "allocate" , "%s(%#x,%d,%#x)", NULL, NULL },
++#endif
++#ifdef TARGET_NR_deallocate
++{ TARGET_NR_deallocate, "deallocate" , "%s(%#x, %d)", NULL, NULL },
++#endif
++#ifdef TARGET_NR_random
++{ TARGET_NR_random, "random" , "%s(%#x, %d, %#x)", NULL, NULL },
++#endif
+--- qemu-2.3.0/linux-user/syscall.c.orig	2015-04-27 22:08:26.000000000 +0800
++++ qemu-2.3.0/linux-user/syscall.c	2016-06-25 22:56:36.000000000 +0800
+@@ -5533,7 +5533,110 @@
+         print_syscall(num, arg1, arg2, arg3, arg4, arg5, arg6);
+ 
+     switch(num) {
++#if defined(TARGET_NR_transmit)
++    case TARGET_NR_transmit:
++        if (!(p = lock_user(VERIFY_READ, arg2, arg3, 1)))
++            goto efault;
++        ret = get_errno(write(arg1, p, arg3));
++        unlock_user(p, arg2, 0);
++        if ( !is_error(ret) ) {
++            if ( arg4 ) {
++                if (!(p = lock_user(VERIFY_WRITE, arg4, 4, 0)))
++                    goto efault;
++                memcpy(p, &ret, 4);
++                unlock_user(p, arg4, 4);
++                ret = 0;
++            }
++        }
++        break;
++#endif
++#if defined(TARGET_NR_receive)
++    case TARGET_NR_receive:
++        if (arg3 == 0)
++            ret = 0;
++        else {
++            if (!(p = lock_user(VERIFY_WRITE, arg2, arg3, 0)))
++                goto efault;
++            ret = get_errno(read(arg1, p, arg3));
++            unlock_user(p, arg2, ret);
++            if ( !is_error(ret) ) {
++                if ( arg4 ) {
++                    if (!(p = lock_user(VERIFY_WRITE, arg4, 4, 0)))
++                        goto efault;
++                    memcpy(p, &ret, 4);
++                    unlock_user(p, arg4, 4);
++                    ret = 0;
++                }
++            }
++        }
++        break;
++#endif
++#if defined(TARGET_NR_fdwait)
++    case TARGET_NR_fdwait:
++        ret = do_select(arg1, arg2, arg3, 0, arg4);
++        if ( !is_error(ret) ) {
++            if (!(p = lock_user(VERIFY_WRITE, arg5, 4, 0)))
++                goto efault;
++            memcpy(p, &ret, 4);
++            unlock_user(p, arg5, 4);
++            ret = 0;
++        }
++
++        break;
++#endif
++#if defined(TARGET_NR_allocate)
++    case TARGET_NR_allocate:
++        {
++            if (!(p = lock_user(VERIFY_WRITE, arg3, 4, 0)))
++                goto efault;
++
++            abi_ulong PROT = PROT_READ | PROT_WRITE;
++            if ( arg2 )
++                PROT |= PROT_EXEC;
++            ret = get_errno(target_mmap(0, arg1, PROT, target_to_host_bitmask(MAP_ANONYMOUS|MAP_PRIVATE, mmap_flags_tbl), -1, 0));
++            if ( !is_error(ret) ) {
++                memcpy(p, &ret, 4);
++                ret = 0;
++            }
++            unlock_user(p, arg3, 4);
++        }
++        break;
++#endif
++#if defined(TARGET_NR_deallocate)
++    case TARGET_NR_deallocate:
++        ret = get_errno(target_munmap(arg1, arg2));
++        break;
++#endif
++#if defined(TARGET_NR_deallocate)
++    case TARGET_NR_random:
++        if (arg2 == 0)
++            ret = 0;
++        else {
++            if (!(p = lock_user(VERIFY_WRITE, arg1, arg2, 0)))
++                goto efault;
++            int fd = open("/dev/random", O_RDONLY);
++            if ( fd < 0 )
++                goto efault;
++            ret = get_errno(read(fd, p, arg2));
++            close(fd);
++            unlock_user(p, arg1, ret);
++
++            if ( !is_error(ret) ) {
++                if ( arg3 ) {
++                    if (!(p = lock_user(VERIFY_WRITE, arg3, 4, 0)))
++                        goto efault;
++                    memcpy(p, &ret, 4);
++                    unlock_user(p, arg3, ret);
++                }
++                ret = 0;
++            }
++        }
++        break;
++#endif
+     case TARGET_NR_exit:
++#if defined(TARGET_NR_terminate)
++    case TARGET_NR_terminate:
++#endif
+         /* In old applications this may be used to implement _exit(2).
+            However in threaded applictions it is used for thread termination,
+            and _exit_group is used for application termination.

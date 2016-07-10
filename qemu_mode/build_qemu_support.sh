@@ -117,6 +117,7 @@ echo "[+] Unpacking successful."
 
 echo "[*] Applying patches..."
 
+patch -p0 <patches/cgc.diff || exit 1
 patch -p0 <patches/elfload.diff || exit 1
 patch -p0 <patches/cpu-exec.diff || exit 1
 patch -p0 <patches/translate-all.diff || exit 1
@@ -124,6 +125,7 @@ patch -p0 <patches/syscall.diff || exit 1
 
 echo "[+] Patching done."
 
+CPU_TARGET="i386"
 ORIG_CPU_TARGET="$CPU_TARGET"
 
 test "$CPU_TARGET" = "" && CPU_TARGET="`uname -m`"
