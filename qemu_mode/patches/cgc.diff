@@ -204,3 +204,19 @@
          /* In old applications this may be used to implement _exit(2).
             However in threaded applictions it is used for thread termination,
             and _exit_group is used for application termination.
+--- qemu-2.3.0/linux-user/elfload.c.orig	2015-04-27 07:08:25.000000000 -0700
++++ qemu-2.3.0/linux-user/elfload.c	2016-08-03 01:22:41.841307664 -0700
+@@ -1979,6 +1985,13 @@
+     }
+ 
+     close(image_fd);
++    /* Create page for DECREE flag */
++    error = target_mmap(0x4347C000, 4096, PROT_READ | PROT_WRITE,
++                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
++    if (error == -1) {
++        errmsg = "mmap DECREE flag page failed";
++        goto exit_errmsg;
++    }
+     return;
+ 
+  exit_read:
