@@ -211,7 +211,7 @@
  
      close(image_fd);
 +    /* Create page for DECREE flag */
-+    error = target_mmap(0x4347C000, 4096, PROT_READ | PROT_WRITE,
++    error = target_mmap(0x4347C000, 4096, PROT_READ,
 +                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 +    if (error == -1) {
 +        errmsg = "mmap DECREE flag page failed";
